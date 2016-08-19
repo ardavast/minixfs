@@ -87,6 +87,9 @@ end
 
 def find_inode_num(disk, path)
     path = path.split('/').reject(&:empty?)
+    if path == '/' then
+        return 1
+    end
 
     inode_num = 1
     while path != [] do
@@ -119,10 +122,72 @@ def ls(disk, path)
             inode_num = dentry.inode
             disk.seek(find_inode_offset(inode_num))
             inode = MinixInode.read(disk)
-            puts "#{mode_string(inode.i_mode)} #{inode.i_uid} #{inode.i_size} #{dentry_name(dentry)}"
+            puts "#{mode_string(inode.i_mode)} #{dentry.inode} #{inode.i_uid} #{inode.i_size} #{dentry_name(dentry)}"
         end
     end
 end
 
 #ls(disk, '/vtrgb')
-ls(disk, '/apparmor.d/abstractions')
+#ls(disk, '/')
+
+def get_zones_from_block(disk, block)
+    disk.seek(block)
+    bytes_read = 0
+    zones = []
+    loop do
+        zone = disk.read(2).unpack('S')[0]
+        break if bytes_read >= 1024 or zone == 0
+        zones << zone
+        bytes_read += 2
+    end
+    return zones
+end
+
+
+def get_zones(disk, zones)
+    if zones[7] == 0 && zones[8] == 0 then
+        return zones[0..6]
+    end
+    if zones[7] != 0 then
+        allzones = zones[0..6]
+        allzones.concat(get_zones_from_block(disk, zones[7] * 1024))
+    end
+    if zones[8] != 0 then
+        zoneblocks = get_zones_from_block(disk, zones[8] * 1024)
+        for zoneblock in zoneblocks do
+            allzones.concat(get_zones_from_block(disk, zoneblock * 1024))
+        end
+    end
+    return allzones
+end
+
+#disk.seek(find_inode_offset(1126))
+#inode = MinixInode.read(disk)
+#
+#pp(get_zones(disk, inode.i_zone))
+#disk.seek(35668 * 1024)
+#data = disk.read(1024)
+#pp data
+
+def cat(disk, path)
+    inode_num = find_inode_num(disk, path)
+    disk.seek(find_inode_offset(inode_num))
+    inode = MinixInode.read(disk)
+    data = ""
+    size = inode.i_size
+    zones = get_zones(disk, inode.i_zone)
+    for zone in zones do
+        disk.seek(zone * 1024)
+        if size <= 1024 then
+            data << disk.read(size)
+                break
+        else
+            data << disk.read(1024)
+        end
+        size -= 1024
+    end
+    puts data
+end
+
+cat(disk, '/apparmor.d/abstractions/apparmor_api/change_profile')
+cat(disk, 'bigfile.bin')
