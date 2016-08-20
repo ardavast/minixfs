@@ -29,11 +29,11 @@ main(int argc, char *argv[])
 	iovlen = 0;
 	mntflags = 0;
 
-	if (argc != 2)
+	if (argc != 3)
 		usage();
 
-	dev = argv[0];
-	dir = argv[1];
+	dev = argv[1];
+	dir = argv[2];
 
 	mntflags |= MNT_RDONLY;
 	build_iovec(&iov, &iovlen, "fstype", fstype, (size_t)-1);
@@ -42,6 +42,7 @@ main(int argc, char *argv[])
 
 	if (nmount(iov, iovlen, mntflags) < 0)
 		err(1, "%s", dev);
+
 	exit(0);
 }
 
