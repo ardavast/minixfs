@@ -19,23 +19,28 @@ void build_iovec(struct iovec **iov, int *iovlen, const char *name, void *val, s
 int
 main(int argc, char *argv[])
 {
-	struct iovec *iov;
-	int iovlen;
-	int mntflags;
+	struct iovec *iov = NULL;
+	int iovlen = 0;
+	int mntflags = 0;
 	char *dev, *dir, mntpath[MAXPATHLEN];
 	char fstype[] = "minixfs";
-
-	iov = NULL;
-	iovlen = 0;
-	mntflags = 0;
 
 	if (argc != 3)
 		usage();
 
+	mntflags |= MNT_RDONLY;
+
 	dev = argv[1];
 	dir = argv[2];
 
-	mntflags |= MNT_RDONLY;
+        /*
+         * Resolve the mountpoint with realpath(3) and remove unnecessary
+         * slashes from the devicename if there are any.
+         */
+        if (checkpath(dir, mntpath) != 0)
+                err(1, "%s", mntpath);
+        (void)rmslashes(dev, dev);
+
 	build_iovec(&iov, &iovlen, "fstype", fstype, (size_t)-1);
 	build_iovec(&iov, &iovlen, "fspath", mntpath, (size_t)-1);
 	build_iovec(&iov, &iovlen, "from", dev, (size_t)-1);
