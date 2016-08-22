@@ -11,6 +11,10 @@
 #include <sys/kernel.h>
 #include <sys/proc.h>
 #include <sys/priv.h>
+#include <sys/buf.h>
+
+#include <geom/geom.h>
+#include <geom/geom_vfs.h>
 
 #define MINIXFS_ROOTINO 1
 
@@ -20,9 +24,24 @@ struct minixfs_mnt {
     struct cdev *pm_dev;
 };
 
-#define	VFSTOMINIXFS(mp) ((struct minixfs_mnt *)mp->mnt_data)
+struct minixfs_sb {
+    uint16_t s_ninodes;
+    uint16_t s_nzones;
+    uint16_t s_imap_blocks;
+    uint16_t s_zmap_blocks;
+    uint16_t s_firstdatazone;
+    uint16_t s_log_zone_size;
+    uint32_t s_max_size;
+    uint16_t s_magic;
+    uint16_t s_state;
+    uint32_t s_zones;
+};
+
+#define VFSTOMINIXFS(mp) ((struct minixfs_mnt *)mp->mnt_data)
 
 static const char *minixfs_opts[] = {"fstype", "fspath", "from", "ro", NULL };
+
+static int minixfs_mountfs(struct vnode *devvp, struct mount *mp);
 
 static int
 minixfs_mount(struct mount *mp)
@@ -76,15 +95,65 @@ minixfs_mount(struct mount *mp)
         return (error);
     }
 
-    //error = minixfs_mountfs(devvp, mp);
-    //if (error) {
-    //    vrele(devvp);
-    //    return (error);
-    //}
+    error = minixfs_mountfs(devvp, mp);
+    if (error) {
+        vrele(devvp);
+        return (error);
+    }
 
     vfs_mountedfrom(mp, from);
 
     return (0);
+}
+
+static int
+minixfs_mountfs(struct vnode *devvp, struct mount *mp)
+{
+    //struct cdev *dev = devvp->v_rdev;
+    struct g_consumer *cp;
+    struct bufobj *bo;
+    struct buf *bp;
+    struct minixfs_sb *ms;
+    int error;
+
+    g_topology_lock();
+    error = g_vfs_open(devvp, &cp, "minixfs", 0);
+    g_topology_unlock();
+    VOP_UNLOCK(devvp, 0);
+    if (error)
+        return (error);
+
+    bo = &devvp->v_bufobj;
+
+
+    bp = NULL;
+    error = bread(devvp, 2, 1024, NOCRED, &bp);
+    if (error)
+        goto out;
+    ms = (struct minixfs_sb *)bp->b_data;
+
+    printf("s_ninodes: %i ", ms->s_ninodes);
+    printf("s_nzones: %i ", ms->s_nzones);
+    printf("s_imap_blocks: %i ", ms->s_imap_blocks);
+    printf("s_zmap_blocks: %i ", ms->s_zmap_blocks);
+    printf("s_firstdatazone: %i ", ms->s_firstdatazone);
+    printf("s_log_zone_size: %i ", ms->s_log_zone_size);
+    printf("s_max_size: %i ", ms->s_max_size);
+    printf("s_magic: %i ", ms->s_magic);
+    printf("s_state: %i ", ms->s_state);
+    printf("s_zones: %i", ms->s_zones);
+    printf("\n");
+
+out:
+    if (bp)
+        brelse(bp);
+    if (cp != NULL) {
+        g_topology_lock();
+        g_vfs_close(cp);
+        g_topology_unlock();
+    }
+
+    return (1);
 }
 
 static int
